@@ -2,6 +2,7 @@
 
 namespace EvansHunt\LazyFocusFit;
 
+use SilverStripe\Core\Convert;
 use SilverStripe\Core\Extension;
 use SilverStripe\Model\ArrayData;
 use SilverStripe\Model\List\ArrayList;
@@ -227,7 +228,7 @@ class LazyFocusFitImageExtension extends Extension
     public function AddAttribute($name, $value = null)
     {
         $this->getOwner()->AttributeString .= $this->getOwner()->AttributeString ? ' ' : '';
-        $this->getOwner()->AttributeString .= $name . ($value ? '="' . $value . '"' : '');
+        $this->getOwner()->AttributeString .= $this->attribute($name, $value);
 
         return $this->getOwner();
     }
@@ -236,9 +237,17 @@ class LazyFocusFitImageExtension extends Extension
     public function AddImgAttribute($name, $value = null)
     {
         $this->getOwner()->ImgAttributeString .= $this->getOwner()->ImgAttributeString ? ' ' : '';
-        $this->getOwner()->ImgAttributeString .= $name . ($value ? '="' . $value . '"' : '');
+        $this->getOwner()->ImgAttributeString .= $this->attribute($name, $value);
 
         return $this->getOwner();
+    }
+
+    // The attribute strings are output as HTML: only safe attribute names, values escaped
+    // (a template could pass CMS or user content as the value)
+    private function attribute($name, $value = null): string
+    {
+        $name = preg_replace('/[^A-Za-z0-9_:.-]/', '', (string) $name);
+        return $name . ($value ? '="' . Convert::raw2att((string) $value) . '"' : '');
     }
 
     // Allows specifying an aspect ratio when using ResponsivePicture()

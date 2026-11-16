@@ -2,10 +2,11 @@
 
 namespace EvansHunt\LazyFocusFit;
 
-use SilverStripe\ORM\ArrayList;
-use SilverStripe\ORM\DataExtension;
+use SilverStripe\Core\Extension;
+use SilverStripe\Model\ArrayData;
+use SilverStripe\Model\List\ArrayList;
 
-class LazyFocusFitImageExtension extends DataExtension
+class LazyFocusFitImageExtension extends Extension
 {
     private static $default_webp = false;
 
@@ -45,13 +46,14 @@ class LazyFocusFitImageExtension extends DataExtension
 
     public function ResponsivePicture(...$arguments)
     {
-        if (!$this->owner->Exists()) {
+        $arguments = $this->unwrapArguments($arguments);
+        if (!$this->getOwner()->Exists()) {
             return null;
         }
 
         $this->populateResponsiveImageAttributes($arguments);
 
-        return $this->owner->renderWith('EvansHunt\\LazyFocusFit\\Picture');
+        return $this->getOwner()->renderWith('EvansHunt\\LazyFocusFit\\Picture');
     }
 
     /**
@@ -67,7 +69,8 @@ class LazyFocusFitImageExtension extends DataExtension
 
     public function ResponsiveImg(...$arguments)
     {
-        if (!$this->owner->Exists()) {
+        $arguments = $this->unwrapArguments($arguments);
+        if (!$this->getOwner()->Exists()) {
             return null;
         }
 
@@ -85,9 +88,9 @@ class LazyFocusFitImageExtension extends DataExtension
             }
         }
 
-        $this->owner->ImgSrcset = implode(", ", $srcsetArray);
+        $this->getOwner()->ImgSrcset = implode(", ", $srcsetArray);
 
-        return $this->owner->renderWith('EvansHunt\\LazyFocusFit\\Img');
+        return $this->getOwner()->renderWith('EvansHunt\\LazyFocusFit\\Img');
     }
 
     /**
@@ -110,9 +113,20 @@ class LazyFocusFitImageExtension extends DataExtension
 
     public function ResponsiveBgAttributes(...$arguments)
     {
+        $arguments = $this->unwrapArguments($arguments);
         $this->populateResponsiveImageAttributes($arguments);
 
-        return $this->owner->renderWith('EvansHunt\\LazyFocusFit\\BackgroundAttributes');
+        return $this->getOwner()->renderWith('EvansHunt\\LazyFocusFit\\BackgroundAttributes');
+    }
+
+    /**
+     * SS6 passes template variables into methods wrapped in ViewLayerData: use their string values
+     */
+    private function unwrapArguments(array $arguments): array
+    {
+        return array_map(function ($argument) {
+            return is_object($argument) ? (string) $argument : $argument;
+        }, $arguments);
     }
 
     private function populateResponsiveImageAttributes($arguments)
@@ -124,16 +138,16 @@ class LazyFocusFitImageExtension extends DataExtension
             $minWidth = $minWidth === 'default' ? '' : $minWidth;
 
             return [
-                'Sizes' => $this->owner->exists() ? new ArrayList(array_map(function ($item) {
+                'Sizes' => $this->getOwner()->exists() ? ArrayList::create(array_map(function ($item) {
                     $params = explode('-', $item);
                     $size = array_shift($params);
                     $image = $this->croppedImage($size);
 
-                    return [
+                    return ArrayData::create([
                         'URL' => $image ? $image->URL : '',
                         'Descriptors' => join(' ', $params)
-                    ];
-                }, $sourceItems)) : [],
+                    ]);
+                }, $sourceItems)) : ArrayList::create(),
                 'MinWidth' => $minWidth,
                 'AutoSizes' => array_reduce($sourceItems, function ($carry, $item) {
                     return $carry || strpos($item, 'w') !== false;
@@ -153,7 +167,9 @@ class LazyFocusFitImageExtension extends DataExtension
 
     public function PictureSources()
     {
-        return new ArrayList($this->pictureSrcArray);
+        return ArrayList::create(array_map(function ($source) {
+            return ArrayData::create($source);
+        }, $this->pictureSrcArray ?: []));
     }
 
     // If using a value other than image title for alt tag
@@ -161,7 +177,7 @@ class LazyFocusFitImageExtension extends DataExtension
     // @Todo: add extension point
     public function Caption()
     {
-        return $this->owner->Title;
+        return $this->getOwner()->Title;
     }
 
     public function TinySrc()
@@ -174,29 +190,31 @@ class LazyFocusFitImageExtension extends DataExtension
     private function croppedImage($size)
     {
         // SVGs have no height, so we can't crop them
-        if ($this->owner->exists() && $this->owner->Height) {
-            $originalRatio = $this->owner->Width / $this->owner->Height;
+        if ($this->getOwner()->exists() && $this->getOwner()->Height) {
+            $originalRatio = $this->getOwner()->Width / $this->getOwner()->Height;
 
-            if ($this->owner->AspectRatio) {
-                if ($this->owner->AspectRatio > $originalRatio) {
-                    $scaledImage = $this->owner
-                        ->FocusCropHeight(round($this->owner->Width / $this->owner->AspectRatio))
+            if ($this->getOwner()->AspectRatio) {
+                if ($this->getOwner()->AspectRatio > $originalRatio) {
+                    $scaledImage = $this->getOwner()
+                        ->FocusCropHeight(round($this->getOwner()->Width / $this->getOwner()->AspectRatio))
                         ->ScaleMaxWidth($size);
                 } else {
-                    $scaledImage = $this->owner
-                        ->FocusCropWidth(round($this->owner->Height * $this->owner->AspectRatio))
+                    $scaledImage = $this->getOwner()
+                        ->FocusCropWidth(round($this->getOwner()->Height * $this->getOwner()->AspectRatio))
                         ->ScaleMaxWidth($size);
                 }
             } else {
-                $scaledImage = $this->owner->ScaleMaxWidth($size);
+                $scaledImage = $this->getOwner()->ScaleMaxWidth($size);
             }
 
-            return ($this->owner->config()->get('default_webp') || $this->owner->serveWebP)
+            // Webp() comes from a separate module (e.g. bigfork/silverstripe-webp-formatter); without one, serve as is
+            $useWebp = $this->getOwner()->config()->get('default_webp') || $this->getOwner()->serveWebP;
+            return ($useWebp && $scaledImage->hasMethod('Webp'))
                 ? $scaledImage->Webp()
                 : $scaledImage;
         }
 
-        return $this->owner;
+        return $this->getOwner();
     }
 
     public function AutoSizes()
@@ -208,54 +226,54 @@ class LazyFocusFitImageExtension extends DataExtension
     // returned by ResponsiveImg
     public function AddAttribute($name, $value = null)
     {
-        $this->owner->AttributeString .= $this->owner->AttributeString ? ' ' : '';
-        $this->owner->AttributeString .= $name . ($value ? '="' . $value . '"' : '');
+        $this->getOwner()->AttributeString .= $this->getOwner()->AttributeString ? ' ' : '';
+        $this->getOwner()->AttributeString .= $name . ($value ? '="' . $value . '"' : '');
 
-        return $this->owner;
+        return $this->getOwner();
     }
 
     // Adds any attribute to the <img> element returned by ResponsivePicture()
     public function AddImgAttribute($name, $value = null)
     {
-        $this->owner->ImgAttributeString .= $this->owner->ImgAttributeString ? ' ' : '';
-        $this->owner->ImgAttributeString .= $name . ($value ? '="' . $value . '"' : '');
+        $this->getOwner()->ImgAttributeString .= $this->getOwner()->ImgAttributeString ? ' ' : '';
+        $this->getOwner()->ImgAttributeString .= $name . ($value ? '="' . $value . '"' : '');
 
-        return $this->owner;
+        return $this->getOwner();
     }
 
     // Allows specifying an aspect ratio when using ResponsivePicture()
     public function AddAspectRatio($width, $height)
     {
-        $this->owner->AspectRatio = $width / $height;
-        return $this->owner;
+        $this->getOwner()->AspectRatio = $width / $height;
+        return $this->getOwner();
     }
 
     // Allows using object-fit and object-cover css properties, w/ IE polyfill and FocusPoint integration
     public function ObjectFit($objectFitType = 'cover')
     {
-        $this->owner->IsObjectFit = true;
-        $this->owner->ObjectFitType = $objectFitType;
-        return $this->owner;
+        $this->getOwner()->IsObjectFit = true;
+        $this->getOwner()->ObjectFitType = $objectFitType;
+        return $this->getOwner();
     }
 
     public function NaturalWidth()
     {
-        $this->owner->IsNaturalWidth = true;
-        return $this->owner;
+        $this->getOwner()->IsNaturalWidth = true;
+        return $this->getOwner();
     }
 
     // Original width will be used for html width attribute
     // Height attribute is width/aspect ratio
     public function CroppedHeight()
     {
-        return $this->owner->AspectRatio
-            ? round($this->owner->Width / $this->owner->AspectRatio)
-            : $this->owner->Height;
+        return $this->getOwner()->AspectRatio
+            ? round($this->getOwner()->Width / $this->getOwner()->AspectRatio)
+            : $this->getOwner()->Height;
     }
 
     public function UseWebP()
     {
-        $this->owner->serveWebP = true;
-        return $this->owner;
+        $this->getOwner()->serveWebP = true;
+        return $this->getOwner();
     }
 }

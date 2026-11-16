@@ -9,7 +9,7 @@
 >
     <% loop $PictureSources %>
         <source
-            data-srcset="<% loop $Sizes %>$URL $Descriptors<% if not $Last %>,<% end_if %><% end_loop %>"
+            data-srcset="<% loop $Sizes %>$URL $Descriptors<% if not $IsLast %>,<% end_if %><% end_loop %>"
             <% if $MinWidth %>
                 media="(min-width: $MinWidth)"
             <% end_if %>
